@@ -12,11 +12,16 @@ import {
   ChevronDown,
   Filter,
   Download,
+  PieChart,
 } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import { useMemberStore, STAFF_LIST } from '@/store/useMemberStore';
-import { CATEGORY_MAP, PRESCRIPTION_STATUS_MAP } from '@/utils/constants';
-import type { MemberCategory, PrescriptionStatus } from '@/types';
+import {
+  CATEGORY_MAP,
+  PRESCRIPTION_STATUS_MAP,
+  FOLLOW_UP_RESULT_MAP,
+} from '@/utils/constants';
+import type { MemberCategory, PrescriptionStatus, FollowUpResult } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateCN } from '@/utils/dateUtils';
 
@@ -51,12 +56,14 @@ export default function Statistics() {
     getPeriodStats,
     getCategoryStats,
     getStaffRanking,
+    getResultStatsByStaff,
     getMembersByStatsFilter,
   } = useMemberStore();
 
   const currentStats = getPeriodStats(period, statsFilter);
   const categoryStats = getCategoryStats(period, statsFilter);
   const staffRanking = getStaffRanking(period, statsFilter);
+  const resultStats = getResultStatsByStaff(period, statsFilter);
 
   const pendingCount = Math.max(0, currentStats.total - currentStats.completed);
 
@@ -72,7 +79,17 @@ export default function Statistics() {
   const medalColors = ['text-amber-500', 'text-slate-400', 'text-amber-700'];
   const medalBgColors = ['bg-amber-50', 'bg-slate-50', 'bg-amber-100/50'];
 
-  const handleDrillDown = (drillStatus: 'pending' | 'completed' | 'all', extraFilter?: { staff?: string; category?: string }) => {
+  const RESULT_COLORS: Record<FollowUpResult, string> = {
+    connected: 'bg-emerald-500',
+    no_answer: 'bg-rose-400',
+    not_needed: 'bg-amber-400',
+    purchased: 'bg-blue-500',
+  };
+
+  const handleDrillDown = (
+    drillStatus: 'pending' | 'completed' | 'all',
+    extraFilter?: { staff?: string; category?: string; operator?: string; followUpResult?: FollowUpResult | 'all' }
+  ) => {
     const filter = { ...statsFilter, ...extraFilter };
     const params = new URLSearchParams();
     params.set('period', period);
@@ -81,15 +98,24 @@ export default function Statistics() {
     if (filter.category !== 'all') params.set('category', filter.category as string);
     if (filter.prescriptionStatus !== 'all')
       params.set('prescriptionStatus', filter.prescriptionStatus as string);
+    if (filter.operator && filter.operator !== 'all') params.set('operator', filter.operator as string);
+    if (filter.followUpResult && filter.followUpResult !== 'all')
+      params.set('followUpResult', filter.followUpResult as string);
     navigate(`/members?${params.toString()}`);
   };
 
   const handleStaffClick = (staffName: string) => {
-    handleDrillDown('all', { staff: staffName });
+    handleDrillDown('all', { operator: staffName });
   };
 
   const handleCategoryClick = (catKey: string) => {
     handleDrillDown('all', { category: catKey });
+  };
+
+  const handleResultClick = (result: FollowUpResult, staffName?: string) => {
+    const extraFilter: { followUpResult: FollowUpResult; operator?: string } = { followUpResult: result };
+    if (staffName) extraFilter.operator = staffName;
+    handleDrillDown('all', extraFilter);
   };
 
   const hasActiveFilter =
@@ -118,11 +144,24 @@ export default function Statistics() {
     if (statsFilter.prescriptionStatus !== 'all') filterParts.push(`处方: ${PRESCRIPTION_STATUS_MAP[statsFilter.prescriptionStatus as PrescriptionStatus]?.label}`);
     const filterLine = filterParts.length > 0 ? filterParts.join('、') : '全部';
 
+    const resultSummary: string[] = [];
+    resultStats.forEach((s) => {
+      if (s.total > 0) {
+        const parts = Object.entries(s.results)
+          .map(([k, v]) => `${FOLLOW_UP_RESULT_MAP[k as FollowUpResult]?.label || k}: ${v}人`)
+          .join('、');
+        resultSummary.push(`${s.name}（${s.total}人): ${parts}`);
+      }
+    });
+
     const summaryRows = [
       [`续购提醒统计导出 - ${periodLabels[period]}`],
       [`筛选条件: ${filterLine}`],
       [`导出时间: ${new Date().toLocaleString('zh-CN')}`],
       [`总数: ${currentStats.total}, 已处理: ${currentStats.completed}, 待跟进: ${pendingCount}`],
+      [],
+      ['跟进质量分析:'],
+      ...resultSummary.map((r) => [r]),
       [],
       header,
       ...rows,
@@ -136,7 +175,7 @@ export default function Statistics() {
     link.download = `续购提醒统计_${periodLabels[period]}_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [period, statsFilter, getMembersByStatsFilter, currentStats, pendingCount]);
+  }, [period, statsFilter, getMembersByStatsFilter, currentStats, pendingCount, resultStats]);
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
@@ -511,6 +550,70 @@ export default function Statistics() {
                 人
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <PieChart className="h-5 w-5 text-blue-500" />
+            跟进质量分析
+            <span className="ml-2 text-xs font-normal text-slate-400">按跟进结果分布，点击可钻取明细</span>
+          </h2>
+          <div className="space-y-4">
+            {resultStats.map((staff) => (
+              <div key={staff.name} className="rounded-xl border border-slate-100 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-xs font-medium text-white">
+                      {staff.name.charAt(0)}
+                    </div>
+                    <span className="font-medium text-slate-900">{staff.name}</span>
+                    <span className="text-xs text-slate-400">共跟进 {staff.total} 人</span>
+                  </div>
+                </div>
+                <div className="flex h-8 overflow-hidden rounded-lg bg-slate-100">
+                  {(['connected', 'no_answer', 'not_needed', 'purchased'] as FollowUpResult[]).map(
+                    (result) => {
+                      const count = staff.results[result];
+                      const width = staff.total > 0 ? `${(count / staff.total) * 100}%` : '0%';
+                      if (count === 0) return null;
+                      return (
+                        <button
+                          key={result}
+                          onClick={() => handleResultClick(result, staff.name)}
+                          className={cn(
+                            'group relative flex items-center justify-center transition-all hover:opacity-90',
+                            RESULT_COLORS[result]
+                          )}
+                          style={{ width }}
+                          title={`${FOLLOW_UP_RESULT_MAP[result]?.label || result}: ${count}人`}
+                        >
+                          <span className="text-xs font-medium text-white drop-shadow-sm">
+                            {count > 0 && staff.total >= 5 ? `${count}` : ''}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-4 text-xs">
+                  {(['connected', 'no_answer', 'not_needed', 'purchased'] as FollowUpResult[]).map(
+                    (result) => (
+                      <button
+                        key={result}
+                        onClick={() => handleResultClick(result, staff.name)}
+                        className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-slate-700"
+                      >
+                        <span className={cn('h-2.5 w-2.5 rounded-full', RESULT_COLORS[result])} />
+                        <span>{FOLLOW_UP_RESULT_MAP[result]?.label || result}</span>
+                        <span className="font-medium text-slate-700">{staff.results[result]}</span>
+                        <span className="text-slate-400">({staff.rates[result]}%)</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 

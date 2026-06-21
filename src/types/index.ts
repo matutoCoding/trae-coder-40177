@@ -94,6 +94,8 @@ export interface StatsFilter {
   staff: string | 'all';
   category: MemberCategory | 'all';
   prescriptionStatus: PrescriptionStatus | 'all';
+  operator?: string | 'all';
+  followUpResult?: FollowUpResult | 'all';
 }
 
 export interface Statistics {

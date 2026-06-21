@@ -3,8 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Users, Filter } from 'lucide-react';
 import MemberCard from '@/components/MemberCard';
 import { useMemberStore } from '@/store/useMemberStore';
-import { CATEGORY_MAP, PRESCRIPTION_STATUS_MAP } from '@/utils/constants';
-import type { MemberCategory, PrescriptionStatus } from '@/types';
+import {
+  CATEGORY_MAP,
+  PRESCRIPTION_STATUS_MAP,
+  FOLLOW_UP_RESULT_MAP,
+} from '@/utils/constants';
+import type { MemberCategory, PrescriptionStatus, FollowUpResult } from '@/types';
 import { cn } from '@/lib/utils';
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -30,21 +34,30 @@ export default function MemberList() {
   const prescriptionStatus =
     (searchParams.get('prescriptionStatus') as PrescriptionStatus | 'all') || 'all';
   const drillStatus = (searchParams.get('drillStatus') as 'pending' | 'completed' | 'all') || 'all';
+  const operator = searchParams.get('operator') || 'all';
+  const followUpResult =
+    (searchParams.get('followUpResult') as FollowUpResult | 'all') || 'all';
 
   const members = useMemo(() => {
-    return getMembersByStatsFilter(period, { staff, category, prescriptionStatus }, drillStatus);
-  }, [getMembersByStatsFilter, period, staff, category, prescriptionStatus, drillStatus]);
+    return getMembersByStatsFilter(
+      period,
+      { staff, category, prescriptionStatus, operator, followUpResult },
+      drillStatus
+    );
+  }, [getMembersByStatsFilter, period, staff, category, prescriptionStatus, drillStatus, operator, followUpResult]);
 
   const getFilterSummary = () => {
     const parts: string[] = [];
     if (staff !== 'all') parts.push(staff);
+    if (operator !== 'all') parts.push(`跟进人:${operator}`);
     if (category !== 'all') parts.push(CATEGORY_MAP[category].label);
     if (prescriptionStatus !== 'all') parts.push(PRESCRIPTION_STATUS_MAP[prescriptionStatus].label);
+    if (followUpResult !== 'all') parts.push(FOLLOW_UP_RESULT_MAP[followUpResult]?.label || followUpResult);
     return parts.length > 0 ? parts.join(' · ') : '全部';
   };
 
   const handleBack = () => {
-    navigate('/statistics');
+    navigate(-1);
   };
 
   return (
@@ -88,6 +101,12 @@ export default function MemberList() {
                 {staff === 'all' ? '全部' : staff}
               </span>
             </div>
+            {operator !== 'all' && (
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">跟进人：</span>
+                <span className="font-medium text-blue-600">{operator}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-slate-500">用药类别：</span>
               <span className="font-medium text-slate-700">
@@ -102,6 +121,14 @@ export default function MemberList() {
                   : PRESCRIPTION_STATUS_MAP[prescriptionStatus].label}
               </span>
             </div>
+            {followUpResult !== 'all' && (
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">跟进结果：</span>
+                <span className="font-medium text-emerald-600">
+                  {FOLLOW_UP_RESULT_MAP[followUpResult]?.label || followUpResult}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-slate-500">跟进状态：</span>
               <span className={cn('font-medium', DRILL_STATUS_MAP[drillStatus]?.color)}>
@@ -114,8 +141,9 @@ export default function MemberList() {
         <div className="space-y-3">
           {members.length > 0 ? (
             members.map((member) => {
-              const detailPath = staff !== 'all'
-                ? `/member/${member.id}?fromStaff=${encodeURIComponent(staff)}`
+              const staffForDetail = operator !== 'all' ? operator : staff;
+              const detailPath = staffForDetail !== 'all'
+                ? `/member/${member.id}?fromStaff=${encodeURIComponent(staffForDetail)}`
                 : `/member/${member.id}`;
               return (
                 <MemberCard key={member.id} member={member} linkTo={detailPath} />

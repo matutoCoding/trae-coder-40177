@@ -71,6 +71,13 @@ interface MemberState {
     rate: number;
   }[];
 
+  getResultStatsByStaff: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => {
+    name: string;
+    total: number;
+    results: Record<FollowUpResult, number>;
+    rates: Record<FollowUpResult, number>;
+  }[];
+
   batchAssignStaff: (memberIds: string[], staffName: string) => void;
   batchUpdateNextFollowDate: (memberIds: string[], date: string) => void;
   reassignMember: (memberId: string, staffName: string) => void;
@@ -83,7 +90,7 @@ interface MemberState {
     drillStatus?: DrillStatus
   ) => Member[];
 
-  getBoardData: () => {
+  getBoardData: (baseDate?: string) => {
     data: {
       staff: string;
       overdue: Member[];
@@ -360,6 +367,34 @@ export const useMemberStore = create<MemberState>()(
 
         memberList = applyMemberFilter(memberList, filter);
 
+        if (filter.operator && filter.operator !== 'all') {
+          const { start, end } = getDateRangeForPeriod(period);
+          const operatorMemberIds = new Set<string>();
+          const allFollowUpsFlat = Object.values(followUps).flat();
+          allFollowUpsFlat
+            .filter(
+              (f) =>
+                isDateInRange(f.followDate, start, end) &&
+                f.operator === filter.operator
+            )
+            .forEach((f) => operatorMemberIds.add(f.memberId));
+          memberList = memberList.filter((m) => operatorMemberIds.has(m.id));
+        }
+
+        if (filter.followUpResult && filter.followUpResult !== 'all') {
+          const { start, end } = getDateRangeForPeriod(period);
+          const resultMemberIds = new Set<string>();
+          const allFollowUpsFlat = Object.values(followUps).flat();
+          allFollowUpsFlat
+            .filter(
+              (f) =>
+                isDateInRange(f.followDate, start, end) &&
+                f.result === filter.followUpResult
+            )
+            .forEach((f) => resultMemberIds.add(f.memberId));
+          memberList = memberList.filter((m) => resultMemberIds.has(m.id));
+        }
+
         if (drillStatus === 'completed') {
           memberList = memberList.filter((m) =>
             isCompletedInPeriod(m.id, period, followUps)
@@ -475,11 +510,68 @@ export const useMemberStore = create<MemberState>()(
           .sort((a, b) => b.count - a.count || b.completed - a.completed);
       },
 
-      getBoardData: () => {
+      getResultStatsByStaff: (period, filter = {}) => {
         const state = get();
-        const { members } = state;
-        const today = getTodayStr();
-        const todayPlus7 = addDays(today, 7);
+        const { followUps } = state;
+        const { start, end } = getDateRangeForPeriod(period);
+
+        const targetMembers = state.getMembersByStatsFilter(period, filter);
+        const targetMemberIds = new Set(targetMembers.map((m) => m.id));
+
+        const allFollowUpsFlat = Object.values(followUps).flat();
+        const periodFollowUps = allFollowUpsFlat.filter(
+          (f) =>
+            isDateInRange(f.followDate, start, end) && targetMemberIds.has(f.memberId)
+        );
+
+        const staffLatestResult: Record<string, Record<string, FollowUpResult>> = {};
+        const RESULTS: FollowUpResult[] = ['connected', 'no_answer', 'not_needed', 'purchased'];
+
+        STAFF_LIST.forEach((name) => {
+          staffLatestResult[name] = {};
+        });
+
+        periodFollowUps
+          .sort((a, b) => new Date(a.followDate).getTime() - new Date(b.followDate).getTime())
+          .forEach((f) => {
+            if (!staffLatestResult[f.operator]) return;
+            staffLatestResult[f.operator][f.memberId] = f.result;
+          });
+
+        return STAFF_LIST.map((name) => {
+          const memberResults = staffLatestResult[name];
+          const total = Object.keys(memberResults).length;
+          const results: Record<FollowUpResult, number> = {
+            connected: 0,
+            no_answer: 0,
+            not_needed: 0,
+            purchased: 0,
+          };
+          Object.values(memberResults).forEach((r) => {
+            if (results[r as FollowUpResult] !== undefined) {
+              results[r as FollowUpResult] += 1;
+            }
+          });
+          const rates: Record<FollowUpResult, number> = {
+            connected: 0,
+            no_answer: 0,
+            not_needed: 0,
+            purchased: 0,
+          };
+          if (total > 0) {
+            RESULTS.forEach((r) => {
+              rates[r] = Math.round((results[r] / total) * 100);
+            });
+          }
+          return { name, total, results, rates };
+        });
+      },
+
+      getBoardData: (baseDate) => {
+        const state = get();
+        const { members, followUps } = state;
+        const base = baseDate || getTodayStr();
+        const basePlus7 = addDays(base, 7);
 
         const result = STAFF_LIST.map((staffName) => {
           const staffMembers = members.filter((m) => m.assignedTo === staffName);
@@ -490,13 +582,17 @@ export const useMemberStore = create<MemberState>()(
           const completed: Member[] = [];
 
           staffMembers.forEach((m) => {
-            if (m.followedToday) {
+            const records = followUps[m.id] || [];
+            const hasFollowedOnBase = records.some(
+              (f) => formatDate(f.followDate) === base
+            );
+            if (hasFollowedOnBase) {
               completed.push(m);
-            } else if (m.nextFollowDate < today) {
+            } else if (m.nextFollowDate < base) {
               overdue.push(m);
-            } else if (m.nextFollowDate === today) {
+            } else if (m.nextFollowDate === base) {
               todayList.push(m);
-            } else if (m.nextFollowDate <= todayPlus7) {
+            } else if (m.nextFollowDate <= basePlus7) {
               upcoming.push(m);
             }
           });

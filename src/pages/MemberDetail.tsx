@@ -14,6 +14,8 @@ import {
   AlertCircle,
   ChevronRight,
   Filter,
+  Search,
+  X,
 } from 'lucide-react';
 import { useMemberStore } from '@/store/useMemberStore';
 import StatusBadge from '@/components/StatusBadge';
@@ -53,6 +55,9 @@ export default function MemberDetail() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [methodFilter, setMethodFilter] = useState<FollowUpMethod | 'all'>('all');
   const [resultFilter, setResultFilter] = useState<FollowUpResult | 'all'>('all');
+  const [keyword, setKeyword] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
 
   const fromStaff = searchParams.get('fromStaff');
 
@@ -81,10 +86,34 @@ export default function MemberDetail() {
     if (fromStaff) {
       list = list.filter((f) => f.operator === fromStaff);
     }
+    if (keyword.trim()) {
+      const kw = keyword.trim().toLowerCase();
+      list = list.filter((f) => f.notes.toLowerCase().includes(kw));
+    }
+    if (dateStart) {
+      list = list.filter((f) => f.followDate >= dateStart);
+    }
+    if (dateEnd) {
+      list = list.filter((f) => f.followDate <= dateEnd);
+    }
     return list;
-  }, [allFollowUps, methodFilter, resultFilter, fromStaff]);
+  }, [allFollowUps, methodFilter, resultFilter, fromStaff, keyword, dateStart, dateEnd]);
 
-  const hasActiveFilter = methodFilter !== 'all' || resultFilter !== 'all' || !!fromStaff;
+  const hasActiveFilter =
+    methodFilter !== 'all' ||
+    resultFilter !== 'all' ||
+    !!fromStaff ||
+    !!keyword.trim() ||
+    !!dateStart ||
+    !!dateEnd;
+
+  const handleClearFilters = () => {
+    setMethodFilter('all');
+    setResultFilter('all');
+    setKeyword('');
+    setDateStart('');
+    setDateEnd('');
+  };
 
   if (!member) {
     return (
@@ -378,45 +407,81 @@ export default function MemberDetail() {
                 </span>
               </div>
 
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                  <Filter className="h-3.5 w-3.5" />
-                  筛选
-                </div>
-                <select
-                  value={methodFilter}
-                  onChange={(e) => setMethodFilter(e.target.value as FollowUpMethod | 'all')}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
-                >
-                  {METHOD_FILTER_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                <select
-                  value={resultFilter}
-                  onChange={(e) => setResultFilter(e.target.value as FollowUpResult | 'all')}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
-                >
-                  {RESULT_FILTER_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                {fromStaff && (
-                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">
-                    {fromStaff}
-                  </span>
-                )}
-                {hasActiveFilter && (
-                  <button
-                    onClick={() => {
-                      setMethodFilter('all');
-                      setResultFilter('all');
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-700"
+              <div className="mb-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                    <Filter className="h-3.5 w-3.5" />
+                    筛选
+                  </div>
+                  <select
+                    value={methodFilter}
+                    onChange={(e) => setMethodFilter(e.target.value as FollowUpMethod | 'all')}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
                   >
-                    重置
-                  </button>
-                )}
+                    {METHOD_FILTER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={resultFilter}
+                    onChange={(e) => setResultFilter(e.target.value as FollowUpResult | 'all')}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                  >
+                    {RESULT_FILTER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  {fromStaff && (
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">
+                      {fromStaff}
+                    </span>
+                  )}
+                  {hasActiveFilter && (
+                    <button
+                      onClick={handleClearFilters}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      <X className="h-3 w-3" />
+                      清空筛选
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[180px] max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={keyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      placeholder="搜索备注关键词..."
+                      className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                    />
+                    {keyword && (
+                      <button
+                        onClick={() => setKeyword('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Calendar className="h-3.5 w-3.5" />
+                    <input
+                      type="date"
+                      value={dateStart}
+                      onChange={(e) => setDateStart(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                    />
+                    <span>至</span>
+                    <input
+                      type="date"
+                      value={dateEnd}
+                      onChange={(e) => setDateEnd(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3">

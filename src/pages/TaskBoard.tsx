@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar,
   GripVertical,
@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   UserPlus,
   User,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useMemberStore, STAFF_LIST } from '@/store/useMemberStore';
 import { CATEGORY_MAP } from '@/utils/constants';
-import { formatDateCN, getTodayStr } from '@/utils/dateUtils';
+import { formatDateCN, getTodayStr, addDays } from '@/utils/dateUtils';
 import { cn } from '@/lib/utils';
 import type { Member } from '@/types';
 
@@ -29,19 +31,14 @@ function MemberChip({
   member,
   onDragStart,
   onClick,
+  group,
 }: {
   member: Member;
   onDragStart: (e: React.DragEvent, memberId: string) => void;
   onClick: (memberId: string) => void;
+  group: TimeGroup;
 }) {
   const categoryInfo = CATEGORY_MAP[member.category];
-  const group = member.followedToday
-    ? 'completed'
-    : member.nextFollowDate < getTodayStr()
-    ? 'overdue'
-    : member.nextFollowDate === getTodayStr()
-    ? 'today'
-    : 'upcoming';
   const config = TIME_GROUP_CONFIG[group];
 
   return (
@@ -52,7 +49,7 @@ function MemberChip({
       className={cn(
         'group flex items-center gap-2 rounded-lg border bg-white p-2.5 text-left transition-all cursor-grab active:cursor-grabbing',
         'hover:border-blue-300 hover:shadow-md',
-        member.followedToday && 'opacity-60'
+        group === 'completed' && 'opacity-60'
       )}
     >
       <GripVertical className="h-3.5 w-3.5 flex-shrink-0 text-slate-300 group-hover:text-slate-500" />
@@ -82,12 +79,16 @@ function MemberChip({
 
 export default function TaskBoard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { getBoardData, reassignMember } = useMemberStore();
   const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  const boardData = useMemo(() => getBoardData(), [getBoardData]);
+  const today = getTodayStr();
+  const baseDate = searchParams.get('date') || today;
+
+  const boardData = useMemo(() => getBoardData(baseDate), [getBoardData, baseDate]);
 
   const handleDragStart = useCallback((e: React.DragEvent, memberId: string) => {
     setDraggedMemberId(memberId);
@@ -127,10 +128,35 @@ export default function TaskBoard() {
   }, []);
 
   const handleMemberClick = (memberId: string) => {
-    navigate(`/member/${memberId}`);
+    navigate(`/member/${memberId}?fromBoard=1&date=${encodeURIComponent(baseDate)}`);
   };
 
-  const today = getTodayStr();
+  const handleDateChange = (date: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (date === today) {
+        next.delete('date');
+      } else {
+        next.set('date', date);
+      }
+      return next;
+    });
+  };
+
+  const handlePrevDay = () => {
+    const prev = addDays(baseDate, -1);
+    handleDateChange(prev);
+  };
+
+  const handleNextDay = () => {
+    const next = addDays(baseDate, 1);
+    handleDateChange(next);
+  };
+
+  const isToday = baseDate === today;
+  const isTomorrow = baseDate === addDays(today, 1);
+
+  const dateLabel = isToday ? '今日' : isTomorrow ? '明日' : formatDateCN(baseDate);
 
   const columns = [...boardData.data, { staff: '未分配', overdue: [], today: [], upcoming: [], completed: boardData.unassigned }];
 
@@ -143,8 +169,52 @@ export default function TaskBoard() {
               <h1 className="text-2xl font-bold text-slate-900">跟进任务看板</h1>
               <p className="mt-1 text-sm text-slate-500">
                 <Calendar className="mr-1 inline h-4 w-4" />
-                {formatDateCN(new Date().toISOString())} · 拖动会员卡片到其他营业员名下即可转派
+                {formatDateCN(baseDate)} · {dateLabel} · 拖动会员卡片到其他营业员名下即可转派
               </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+                <button
+                  onClick={handlePrevDay}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="flex items-center gap-2 px-2">
+                  <input
+                    type="date"
+                    value={baseDate}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <button
+                  onClick={handleNextDay}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex rounded-lg bg-slate-100 p-1">
+                <button
+                  onClick={() => handleDateChange(today)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                    isToday ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  今日
+                </button>
+                <button
+                  onClick={() => handleDateChange(addDays(today, 1))}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                    isTomorrow ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  明日
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -209,6 +279,7 @@ export default function TaskBoard() {
                                 member={member}
                                 onDragStart={handleDragStart}
                                 onClick={handleMemberClick}
+                                group={group}
                               />
                             ))}
                           </div>
