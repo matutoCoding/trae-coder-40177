@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Phone,
@@ -13,6 +13,7 @@ import {
   Clock,
   AlertCircle,
   ChevronRight,
+  Filter,
 } from 'lucide-react';
 import { useMemberStore } from '@/store/useMemberStore';
 import StatusBadge from '@/components/StatusBadge';
@@ -28,11 +29,32 @@ import {
 } from '@/utils/constants';
 import { formatDateCN, getDaysDiff } from '@/utils/dateUtils';
 import { cn } from '@/lib/utils';
+import type { FollowUpMethod, FollowUpResult } from '@/types';
+
+const METHOD_FILTER_OPTIONS: { value: FollowUpMethod | 'all'; label: string }[] = [
+  { value: 'all', label: '全部方式' },
+  { value: 'phone', label: '电话' },
+  { value: 'sms', label: '短信' },
+  { value: 'visit', label: '到店' },
+];
+
+const RESULT_FILTER_OPTIONS: { value: FollowUpResult | 'all'; label: string }[] = [
+  { value: 'all', label: '全部结果' },
+  { value: 'connected', label: '已接通' },
+  { value: 'no_answer', label: '未接通' },
+  { value: 'not_needed', label: '暂不需要' },
+  { value: 'purchased', label: '已到店购买' },
+];
 
 export default function MemberDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [methodFilter, setMethodFilter] = useState<FollowUpMethod | 'all'>('all');
+  const [resultFilter, setResultFilter] = useState<FollowUpResult | 'all'>('all');
+
+  const fromStaff = searchParams.get('fromStaff');
 
   const {
     getMemberById,
@@ -45,8 +67,24 @@ export default function MemberDetail() {
   const member = getMemberById(id || '');
   const purchaseRecords = getPurchaseRecords(id || '');
   const prescriptions = getPrescriptions(id || '');
-  const followUps = getFollowUps(id || '');
+  const allFollowUps = getFollowUps(id || '');
   const followedToday = member ? hasFollowedToday(member.id) : false;
+
+  const filteredFollowUps = useMemo(() => {
+    let list = [...allFollowUps];
+    if (methodFilter !== 'all') {
+      list = list.filter((f) => f.method === methodFilter);
+    }
+    if (resultFilter !== 'all') {
+      list = list.filter((f) => f.result === resultFilter);
+    }
+    if (fromStaff) {
+      list = list.filter((f) => f.operator === fromStaff);
+    }
+    return list;
+  }, [allFollowUps, methodFilter, resultFilter, fromStaff]);
+
+  const hasActiveFilter = methodFilter !== 'all' || resultFilter !== 'all' || !!fromStaff;
 
   if (!member) {
     return (
@@ -62,7 +100,11 @@ export default function MemberDetail() {
   const latestPrescription = prescriptions[0];
 
   const handleBack = () => {
-    navigate('/');
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleFollow = () => {
@@ -83,7 +125,7 @@ export default function MemberDetail() {
           className="mb-4 flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-700"
         >
           <ArrowLeft className="h-4 w-4" />
-          返回列表
+          返回
         </button>
 
         <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm">
@@ -110,6 +152,11 @@ export default function MemberDetail() {
                 {member.assignedTo && (
                   <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
                     负责人：{member.assignedTo}
+                  </span>
+                )}
+                {followedToday && (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-600">
+                    今日已完成
                   </span>
                 )}
               </div>
@@ -320,14 +367,61 @@ export default function MemberDetail() {
             </div>
 
             <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <Clock className="h-5 w-5 text-blue-500" />
-                跟进记录
-              </h2>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                  跟进记录
+                </h2>
+                <span className="text-sm text-slate-400">
+                  共 {filteredFollowUps.length} 条
+                  {hasActiveFilter ? ` (筛选中)` : ''}
+                </span>
+              </div>
+
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  <Filter className="h-3.5 w-3.5" />
+                  筛选
+                </div>
+                <select
+                  value={methodFilter}
+                  onChange={(e) => setMethodFilter(e.target.value as FollowUpMethod | 'all')}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  {METHOD_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={resultFilter}
+                  onChange={(e) => setResultFilter(e.target.value as FollowUpResult | 'all')}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-100"
+                >
+                  {RESULT_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                {fromStaff && (
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">
+                    {fromStaff}
+                  </span>
+                )}
+                {hasActiveFilter && (
+                  <button
+                    onClick={() => {
+                      setMethodFilter('all');
+                      setResultFilter('all');
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    重置
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-3">
-                {followUps.length > 0 ? (
-                  followUps.slice(0, 5).map((record) => {
+                {filteredFollowUps.length > 0 ? (
+                  filteredFollowUps.slice(0, 10).map((record) => {
                     const methodInfo = FOLLOW_UP_METHOD_MAP[record.method];
                     const resultInfo = FOLLOW_UP_RESULT_MAP[record.result];
 
@@ -386,7 +480,7 @@ export default function MemberDetail() {
                   })
                 ) : (
                   <p className="py-8 text-center text-sm text-slate-400">
-                    暂无跟进记录
+                    {hasActiveFilter ? '无匹配的跟进记录' : '暂无跟进记录'}
                   </p>
                 )}
               </div>
@@ -401,7 +495,10 @@ export default function MemberDetail() {
               </h2>
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <div className={cn(
+                    'flex h-9 w-9 items-center justify-center rounded-lg',
+                    followedToday ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600'
+                  )}>
                     <Phone className="h-4 w-4" />
                   </div>
                   <div>

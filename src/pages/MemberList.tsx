@@ -5,12 +5,18 @@ import MemberCard from '@/components/MemberCard';
 import { useMemberStore } from '@/store/useMemberStore';
 import { CATEGORY_MAP, PRESCRIPTION_STATUS_MAP } from '@/utils/constants';
 import type { MemberCategory, PrescriptionStatus } from '@/types';
-import { formatDateCN } from '@/utils/dateUtils';
+import { cn } from '@/lib/utils';
 
 const PERIOD_LABELS: Record<string, string> = {
   today: '今日',
   week: '本周',
   month: '本月',
+};
+
+const DRILL_STATUS_MAP: Record<string, { label: string; color: string }> = {
+  pending: { label: '待跟进', color: 'text-amber-600' },
+  completed: { label: '已处理', color: 'text-emerald-600' },
+  all: { label: '全部', color: 'text-slate-700' },
 };
 
 export default function MemberList() {
@@ -23,10 +29,11 @@ export default function MemberList() {
   const category = (searchParams.get('category') as MemberCategory | 'all') || 'all';
   const prescriptionStatus =
     (searchParams.get('prescriptionStatus') as PrescriptionStatus | 'all') || 'all';
+  const drillStatus = (searchParams.get('drillStatus') as 'pending' | 'completed' | 'all') || 'all';
 
   const members = useMemo(() => {
-    return getMembersByStatsFilter(period, { staff, category, prescriptionStatus });
-  }, [getMembersByStatsFilter, period, staff, category, prescriptionStatus]);
+    return getMembersByStatsFilter(period, { staff, category, prescriptionStatus }, drillStatus);
+  }, [getMembersByStatsFilter, period, staff, category, prescriptionStatus, drillStatus]);
 
   const getFilterSummary = () => {
     const parts: string[] = [];
@@ -95,14 +102,25 @@ export default function MemberList() {
                   : PRESCRIPTION_STATUS_MAP[prescriptionStatus].label}
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">跟进状态：</span>
+              <span className={cn('font-medium', DRILL_STATUS_MAP[drillStatus]?.color)}>
+                {DRILL_STATUS_MAP[drillStatus]?.label || '全部'}
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="space-y-3">
           {members.length > 0 ? (
-            members.map((member) => (
-              <MemberCard key={member.id} member={member} />
-            ))
+            members.map((member) => {
+              const detailPath = staff !== 'all'
+                ? `/member/${member.id}?fromStaff=${encodeURIComponent(staff)}`
+                : `/member/${member.id}`;
+              return (
+                <MemberCard key={member.id} member={member} linkTo={detailPath} />
+              );
+            })
           ) : (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-16">
               <Users className="h-12 w-12 text-slate-300" />

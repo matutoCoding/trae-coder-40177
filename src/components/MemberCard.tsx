@@ -12,6 +12,7 @@ interface MemberCardProps {
   selected?: boolean;
   onSelect?: (memberId: string) => void;
   showCheckbox?: boolean;
+  linkTo?: string;
 }
 
 export default function MemberCard({
@@ -20,6 +21,7 @@ export default function MemberCard({
   selected = false,
   onSelect,
   showCheckbox = false,
+  linkTo,
 }: MemberCardProps) {
   const navigate = useNavigate();
   const categoryInfo = CATEGORY_MAP[member.category];
@@ -27,7 +29,7 @@ export default function MemberCard({
   const remainingInfo = getRemainingDaysInfo(member.remainingDays);
 
   const handleClick = () => {
-    navigate(`/member/${member.id}`);
+    navigate(linkTo || `/member/${member.id}`);
   };
 
   const handleCheckboxClick = (e: React.MouseEvent) => {

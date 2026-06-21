@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -11,9 +11,10 @@ import {
   Pill,
   ChevronDown,
   Filter,
+  Download,
 } from 'lucide-react';
 import StatCard from '@/components/StatCard';
-import { useMemberStore } from '@/store/useMemberStore';
+import { useMemberStore, STAFF_LIST } from '@/store/useMemberStore';
 import { CATEGORY_MAP, PRESCRIPTION_STATUS_MAP } from '@/utils/constants';
 import type { MemberCategory, PrescriptionStatus } from '@/types';
 import { cn } from '@/lib/utils';
@@ -23,9 +24,7 @@ type PeriodType = 'today' | 'week' | 'month';
 
 const STAFF_OPTIONS = [
   { value: 'all', label: '全部营业员' },
-  { value: '张营业员', label: '张营业员' },
-  { value: '李营业员', label: '李营业员' },
-  { value: '王营业员', label: '王营业员' },
+  ...STAFF_LIST.map((s) => ({ value: s, label: s })),
 ];
 
 const CATEGORY_OPTIONS: { value: MemberCategory | 'all'; label: string }[] = [
@@ -52,6 +51,7 @@ export default function Statistics() {
     getPeriodStats,
     getCategoryStats,
     getStaffRanking,
+    getMembersByStatsFilter,
   } = useMemberStore();
 
   const currentStats = getPeriodStats(period, statsFilter);
@@ -72,10 +72,11 @@ export default function Statistics() {
   const medalColors = ['text-amber-500', 'text-slate-400', 'text-amber-700'];
   const medalBgColors = ['bg-amber-50', 'bg-slate-50', 'bg-amber-100/50'];
 
-  const handleDrillDown = (extraFilter?: { staff?: string; category?: string }) => {
+  const handleDrillDown = (drillStatus: 'pending' | 'completed' | 'all', extraFilter?: { staff?: string; category?: string }) => {
     const filter = { ...statsFilter, ...extraFilter };
     const params = new URLSearchParams();
     params.set('period', period);
+    params.set('drillStatus', drillStatus);
     if (filter.staff !== 'all') params.set('staff', filter.staff as string);
     if (filter.category !== 'all') params.set('category', filter.category as string);
     if (filter.prescriptionStatus !== 'all')
@@ -84,17 +85,58 @@ export default function Statistics() {
   };
 
   const handleStaffClick = (staffName: string) => {
-    handleDrillDown({ staff: staffName });
+    handleDrillDown('all', { staff: staffName });
   };
 
   const handleCategoryClick = (catKey: string) => {
-    handleDrillDown({ category: catKey });
+    handleDrillDown('all', { category: catKey });
   };
 
   const hasActiveFilter =
     statsFilter.staff !== 'all' ||
     statsFilter.category !== 'all' ||
     statsFilter.prescriptionStatus !== 'all';
+
+  const handleExport = useCallback(() => {
+    const members = getMembersByStatsFilter(period, statsFilter);
+    const header = ['序号', '姓名', '手机号', '用药类别', '处方状态', '负责人', '剩余天数', '上次跟进结果', '下次跟进日期'];
+    const rows = members.map((m, i) => [
+      i + 1,
+      m.name,
+      m.phone,
+      CATEGORY_MAP[m.category]?.label || m.category,
+      PRESCRIPTION_STATUS_MAP[m.prescriptionStatus]?.label || m.prescriptionStatus,
+      m.assignedTo || '未分配',
+      m.remainingDays,
+      m.lastFollowResult,
+      m.nextFollowDate,
+    ]);
+
+    const filterParts: string[] = [];
+    if (statsFilter.staff !== 'all') filterParts.push(`营业员: ${statsFilter.staff}`);
+    if (statsFilter.category !== 'all') filterParts.push(`类别: ${CATEGORY_MAP[statsFilter.category as MemberCategory]?.label}`);
+    if (statsFilter.prescriptionStatus !== 'all') filterParts.push(`处方: ${PRESCRIPTION_STATUS_MAP[statsFilter.prescriptionStatus as PrescriptionStatus]?.label}`);
+    const filterLine = filterParts.length > 0 ? filterParts.join('、') : '全部';
+
+    const summaryRows = [
+      [`续购提醒统计导出 - ${periodLabels[period]}`],
+      [`筛选条件: ${filterLine}`],
+      [`导出时间: ${new Date().toLocaleString('zh-CN')}`],
+      [`总数: ${currentStats.total}, 已处理: ${currentStats.completed}, 待跟进: ${pendingCount}`],
+      [],
+      header,
+      ...rows,
+    ];
+
+    const csvContent = '\uFEFF' + summaryRows.map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `续购提醒统计_${periodLabels[period]}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [period, statsFilter, getMembersByStatsFilter, currentStats, pendingCount]);
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
@@ -109,6 +151,13 @@ export default function Statistics() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50"
+            >
+              <Download className="h-4 w-4" />
+              导出表格
+            </button>
             <div className="flex rounded-lg bg-white p-1 shadow-sm">
               {(['today', 'week', 'month'] as PeriodType[]).map((p) => (
                 <button
@@ -201,7 +250,7 @@ export default function Statistics() {
 
         <div className="mb-6 grid grid-cols-4 gap-4">
           <button
-            onClick={() => handleDrillDown()}
+            onClick={() => handleDrillDown('pending')}
             className="text-left"
           >
             <StatCard
@@ -214,20 +263,20 @@ export default function Statistics() {
             />
           </button>
           <button
-            onClick={() => handleDrillDown()}
+            onClick={() => handleDrillDown('completed')}
             className="text-left"
           >
             <StatCard
               title={`${periodLabels[period]}已完成`}
               value={currentStats.completed}
-              subtitle={`${periodLabels[period]}已有效跟进`}
+              subtitle={`${periodLabels[period]}已处理跟进`}
               icon={<CheckCircle2 className="h-6 w-6" />}
               color="green"
               clickable
             />
           </button>
           <button
-            onClick={() => handleDrillDown()}
+            onClick={() => handleDrillDown('all')}
             className="text-left"
           >
             <StatCard
@@ -240,7 +289,7 @@ export default function Statistics() {
             />
           </button>
           <button
-            onClick={() => handleDrillDown()}
+            onClick={() => handleDrillDown('all')}
             className="text-left"
           >
             <StatCard
@@ -303,7 +352,7 @@ export default function Statistics() {
                   <p className="mt-1 font-semibold text-slate-700">85%</p>
                 </div>
                 <div className="flex-1 text-center">
-                  <p className="text-slate-400">已完成</p>
+                  <p className="text-slate-400">已处理</p>
                   <p className="mt-1 font-semibold text-emerald-600">
                     {currentStats.completed}人
                   </p>
@@ -432,7 +481,7 @@ export default function Statistics() {
                       <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
                         <span>跟进 {staff.count} 人</span>
                         <span>·</span>
-                        <span>有效 {staff.completed} 人</span>
+                        <span>已处理 {staff.completed} 人</span>
                         <span>·</span>
                         <span>
                           剩{Math.max(0, staff.count - staff.completed)}人

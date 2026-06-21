@@ -19,6 +19,10 @@ import { addDays, getTodayStr, formatDate } from '@/utils/dateUtils';
 
 const STORAGE_KEY = 'pharmacy-reminder-store';
 
+const STAFF_LIST = ['张营业员', '李营业员', '王营业员'];
+
+type DrillStatus = 'pending' | 'completed' | 'all';
+
 interface MemberState {
   members: Member[];
   purchaseRecords: Record<string, PurchaseRecord[]>;
@@ -69,11 +73,34 @@ interface MemberState {
 
   batchAssignStaff: (memberIds: string[], staffName: string) => void;
   batchUpdateNextFollowDate: (memberIds: string[], date: string) => void;
+  reassignMember: (memberId: string, staffName: string) => void;
 
   statsFilter: StatsFilter;
   setStatsFilter: (filter: Partial<StatsFilter>) => void;
-  getMembersByStatsFilter: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => Member[];
+  getMembersByStatsFilter: (
+    period: 'today' | 'week' | 'month',
+    filter?: Partial<StatsFilter>,
+    drillStatus?: DrillStatus
+  ) => Member[];
+
+  getBoardData: () => {
+    data: {
+      staff: string;
+      overdue: Member[];
+      today: Member[];
+      upcoming: Member[];
+      completed: Member[];
+    }[];
+    unassigned: Member[];
+  };
 }
+
+const RESULT_LABEL_MAP: Record<FollowUpResult, string> = {
+  connected: '已接通',
+  no_answer: '未接通',
+  not_needed: '暂不需要',
+  purchased: '已到店购买',
+};
 
 const calculateNextFollowDate = (
   member: Member,
@@ -102,13 +129,6 @@ const calculateNextFollowDate = (
     default:
       return addDays(today, 7);
   }
-};
-
-const RESULT_LABEL_MAP: Record<FollowUpResult, string> = {
-  connected: '已接通',
-  no_answer: '未接通',
-  not_needed: '暂不需要',
-  purchased: '已到店购买',
 };
 
 const getDateRangeForPeriod = (period: 'today' | 'week' | 'month'): { start: string; end: string } => {
@@ -149,6 +169,21 @@ const applyMemberFilter = (members: Member[], filter: Partial<StatsFilter>): Mem
   }
 
   return result;
+};
+
+const isCompletedInPeriod = (
+  memberId: string,
+  period: 'today' | 'week' | 'month',
+  followUps: Record<string, FollowUpRecord[]>
+): boolean => {
+  const today = getTodayStr();
+  if (period === 'today') {
+    const records = followUps[memberId] || [];
+    return records.some((f) => formatDate(f.followDate) === today);
+  }
+  const { start, end } = getDateRangeForPeriod(period);
+  const records = followUps[memberId] || [];
+  return records.some((f) => isDateInRange(f.followDate, start, end));
 };
 
 const defaultStatsFilter: StatsFilter = {
@@ -283,15 +318,22 @@ export const useMemberStore = create<MemberState>()(
         }));
       },
 
+      reassignMember: (memberId, staffName) => {
+        set((prev) => ({
+          members: prev.members.map((m) =>
+            m.id === memberId ? { ...m, assignedTo: staffName } : m
+          ),
+        }));
+      },
+
       setStatsFilter: (filter) =>
         set((prev) => ({
           statsFilter: { ...prev.statsFilter, ...filter },
         })),
 
-      getMembersByStatsFilter: (period, filter = {}) => {
+      getMembersByStatsFilter: (period, filter = {}, drillStatus = 'all') => {
         const state = get();
         const { members, followUps } = state;
-        const { start, end } = getDateRangeForPeriod(period);
         const today = getTodayStr();
 
         let memberList: Member[];
@@ -301,6 +343,7 @@ export const useMemberStore = create<MemberState>()(
             (m) => m.nextFollowDate <= today || m.followedToday
           );
         } else {
+          const { start, end } = getDateRangeForPeriod(period);
           const periodMemberIds = new Set<string>();
           const allFollowUpsFlat = Object.values(followUps).flat();
           allFollowUpsFlat
@@ -315,31 +358,29 @@ export const useMemberStore = create<MemberState>()(
           memberList = members.filter((m) => allIds.has(m.id));
         }
 
-        return applyMemberFilter(memberList, filter);
+        memberList = applyMemberFilter(memberList, filter);
+
+        if (drillStatus === 'completed') {
+          memberList = memberList.filter((m) =>
+            isCompletedInPeriod(m.id, period, followUps)
+          );
+        } else if (drillStatus === 'pending') {
+          memberList = memberList.filter((m) =>
+            !isCompletedInPeriod(m.id, period, followUps)
+          );
+        }
+
+        return memberList;
       },
 
       getPeriodStats: (period, filter = {}) => {
         const state = get();
-        const { followUps } = state;
-        const { start, end } = getDateRangeForPeriod(period);
-
         const targetMembers = state.getMembersByStatsFilter(period, filter);
         const total = targetMembers.length;
+        const completed = targetMembers.filter((m) =>
+          isCompletedInPeriod(m.id, period, state.followUps)
+        ).length;
 
-        const targetMemberIds = new Set(targetMembers.map((m) => m.id));
-        const allFollowUpsFlat = Object.values(followUps).flat();
-        const periodFollowUps = allFollowUpsFlat.filter(
-          (f) =>
-            isDateInRange(f.followDate, start, end) && targetMemberIds.has(f.memberId)
-        );
-
-        const completedMemberIds = new Set(
-          periodFollowUps
-            .filter((f) => f.result === 'connected' || f.result === 'purchased')
-            .map((f) => f.memberId)
-        );
-
-        const completed = completedMemberIds.size;
         const safeTotal = Math.max(total, completed);
         const rate =
           safeTotal > 0
@@ -351,8 +392,6 @@ export const useMemberStore = create<MemberState>()(
 
       getCategoryStats: (period, filter = {}) => {
         const state = get();
-        const { followUps } = state;
-        const { start, end } = getDateRangeForPeriod(period);
 
         const categories: (MemberCategory | 'all')[] = [
           'all',
@@ -370,24 +409,14 @@ export const useMemberStore = create<MemberState>()(
           other: '其他',
         };
 
-        const allFollowUpsFlat = Object.values(followUps).flat();
-        const periodFollowUps = allFollowUpsFlat.filter((f) =>
-          isDateInRange(f.followDate, start, end)
-        );
-
         return categories.map((cat) => {
           const catFilter = { ...filter, category: cat === 'all' ? filter.category : cat };
           const catMembers = state.getMembersByStatsFilter(period, catFilter);
           const count = catMembers.length;
 
-          const catMemberIds = new Set(catMembers.map((m) => m.id));
-          const catFollowUps = periodFollowUps.filter((f) => catMemberIds.has(f.memberId));
-          const completedMemberIds = new Set(
-            catFollowUps
-              .filter((f) => f.result === 'connected' || f.result === 'purchased')
-              .map((f) => f.memberId)
-          );
-          const completed = completedMemberIds.size;
+          const completed = catMembers.filter((m) =>
+            isCompletedInPeriod(m.id, period, state.followUps)
+          ).length;
 
           const safeCount = Math.max(count, completed);
           const rate =
@@ -409,8 +438,7 @@ export const useMemberStore = create<MemberState>()(
 
         const staffMap: Record<string, { memberSet: Set<string>; completedSet: Set<string> }> = {};
 
-        const allStaff = ['张营业员', '李营业员', '王营业员'];
-        allStaff.forEach((name) => {
+        STAFF_LIST.forEach((name) => {
           staffMap[name] = { memberSet: new Set(), completedSet: new Set() };
         });
 
@@ -423,13 +451,11 @@ export const useMemberStore = create<MemberState>()(
         periodFollowUps.forEach((f) => {
           if (staffMap[f.operator]) {
             staffMap[f.operator].memberSet.add(f.memberId);
-            if (f.result === 'connected' || f.result === 'purchased') {
-              staffMap[f.operator].completedSet.add(f.memberId);
-            }
+            staffMap[f.operator].completedSet.add(f.memberId);
           }
         });
 
-        return allStaff
+        return STAFF_LIST
           .map((name) => {
             const { memberSet, completedSet } = staffMap[name];
             const count = memberSet.size;
@@ -447,6 +473,45 @@ export const useMemberStore = create<MemberState>()(
             };
           })
           .sort((a, b) => b.count - a.count || b.completed - a.completed);
+      },
+
+      getBoardData: () => {
+        const state = get();
+        const { members } = state;
+        const today = getTodayStr();
+        const todayPlus7 = addDays(today, 7);
+
+        const result = STAFF_LIST.map((staffName) => {
+          const staffMembers = members.filter((m) => m.assignedTo === staffName);
+
+          const overdue: Member[] = [];
+          const todayList: Member[] = [];
+          const upcoming: Member[] = [];
+          const completed: Member[] = [];
+
+          staffMembers.forEach((m) => {
+            if (m.followedToday) {
+              completed.push(m);
+            } else if (m.nextFollowDate < today) {
+              overdue.push(m);
+            } else if (m.nextFollowDate === today) {
+              todayList.push(m);
+            } else if (m.nextFollowDate <= todayPlus7) {
+              upcoming.push(m);
+            }
+          });
+
+          overdue.sort((a, b) => a.remainingDays - b.remainingDays);
+          todayList.sort((a, b) => a.remainingDays - b.remainingDays);
+          upcoming.sort((a, b) => a.remainingDays - b.remainingDays);
+
+          return { staff: staffName, overdue, today: todayList, upcoming, completed };
+        });
+
+        const unassigned = members.filter((m) => !m.assignedTo);
+        unassigned.sort((a, b) => a.remainingDays - b.remainingDays);
+
+        return { data: result, unassigned };
       },
     }),
     {
@@ -474,3 +539,5 @@ export const useMemberStore = create<MemberState>()(
     }
   )
 );
+
+export { STAFF_LIST };

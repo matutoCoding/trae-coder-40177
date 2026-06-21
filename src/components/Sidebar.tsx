@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
-import { Bell, Users, BarChart3, Settings, Pill, Store } from 'lucide-react';
+import { Bell, Users, BarChart3, Settings, Pill, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMemberStore } from '@/store/useMemberStore';
 
 interface SidebarProps {
   role?: 'clerk' | 'manager';
@@ -8,16 +9,14 @@ interface SidebarProps {
 
 const navItems = [
   { path: '/', label: '今日待提醒', icon: Bell },
+  { path: '/board', label: '跟进看板', icon: LayoutGrid },
   { path: '/members', label: '会员管理', icon: Users },
   { path: '/statistics', label: '数据统计', icon: BarChart3 },
 ];
 
-const managerItems = [
-  { path: '/statistics', label: '数据统计', icon: BarChart3 },
-];
-
 export default function Sidebar({ role = 'clerk' }: SidebarProps) {
-  const items = role === 'manager' ? [...navItems] : navItems;
+  const { members } = useMemberStore();
+  const todayReminderCount = members.filter((m) => !m.followedToday).length;
 
   return (
     <aside className="flex h-screen w-60 flex-col border-r border-slate-200 bg-white">
@@ -32,7 +31,7 @@ export default function Sidebar({ role = 'clerk' }: SidebarProps) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {items.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -48,9 +47,9 @@ export default function Sidebar({ role = 'clerk' }: SidebarProps) {
           >
             <item.icon className="h-5 w-5" />
             <span>{item.label}</span>
-            {item.path === '/' && (
+            {item.path === '/' && todayReminderCount > 0 && (
               <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-medium text-white">
-                10
+                {todayReminderCount}
               </span>
             )}
           </NavLink>
