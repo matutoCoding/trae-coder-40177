@@ -38,6 +38,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '139****5678',
     drugName: '苯磺酸氨氯地平片',
     followedToday: false,
+    assignedTo: '李营业员',
   },
   {
     id: 'm002',
@@ -61,6 +62,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '137****8901',
     drugName: '盐酸二甲双胍缓释片',
     followedToday: false,
+    assignedTo: '李营业员',
   },
   {
     id: 'm003',
@@ -84,6 +86,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '138****2345',
     drugName: '阿托伐他汀钙片',
     followedToday: false,
+    assignedTo: '王营业员',
   },
   {
     id: 'm004',
@@ -130,6 +133,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '135****0123',
     drugName: '格列美脲片',
     followedToday: false,
+    assignedTo: '王营业员',
   },
   {
     id: 'm006',
@@ -153,6 +157,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '139****3456',
     drugName: '瑞舒伐他汀钙片',
     followedToday: true,
+    assignedTo: '张营业员',
   },
   {
     id: 'm007',
@@ -176,6 +181,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '137****5678',
     drugName: '硝苯地平缓释片',
     followedToday: false,
+    assignedTo: '李营业员',
   },
   {
     id: 'm008',
@@ -222,6 +228,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '136****9012',
     drugName: '阿司匹林肠溶片',
     followedToday: false,
+    assignedTo: '张营业员',
   },
   {
     id: 'm010',
@@ -245,6 +252,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '135****1234',
     drugName: '普伐他汀钠片',
     followedToday: false,
+    assignedTo: '王营业员',
   },
   {
     id: 'm011',
@@ -268,6 +276,7 @@ export const mockMembers: Member[] = [
     emergencyPhone: '139****2222',
     drugName: '贝那普利片',
     followedToday: true,
+    assignedTo: '张营业员',
   },
   {
     id: 'm012',
@@ -291,5 +300,6 @@ export const mockMembers: Member[] = [
     emergencyPhone: '137****4444',
     drugName: '吡格列酮片',
     followedToday: false,
+    assignedTo: '王营业员',
   },
 ];

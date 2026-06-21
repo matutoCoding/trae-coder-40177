@@ -30,6 +30,7 @@ export interface Member {
   emergencyPhone: string;
   drugName: string;
   followedToday?: boolean;
+  assignedTo?: string;
 }
 
 export interface PurchaseRecord {
@@ -87,6 +88,12 @@ export interface StaffRanking {
   count: number;
   completed: number;
   rate: number;
+}
+
+export interface StatsFilter {
+  staff: string | 'all';
+  category: MemberCategory | 'all';
+  prescriptionStatus: PrescriptionStatus | 'all';
 }
 
 export interface Statistics {

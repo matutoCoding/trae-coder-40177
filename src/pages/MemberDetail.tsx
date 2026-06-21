@@ -93,7 +93,7 @@ export default function MemberDetail() {
             </div>
 
             <div className="flex-1">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold text-slate-900">{member.name}</h1>
                 <span className={cn('text-sm font-medium', levelInfo.color)}>
                   {levelInfo.label}
@@ -107,6 +107,11 @@ export default function MemberDetail() {
                 >
                   {categoryInfo.label}
                 </span>
+                {member.assignedTo && (
+                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
+                    负责人：{member.assignedTo}
+                  </span>
+                )}
               </div>
 
               <div className="mt-3 grid grid-cols-4 gap-4 text-sm">

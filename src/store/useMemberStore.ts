@@ -8,6 +8,8 @@ import type {
   MemberCategory,
   FollowUpResult,
   FollowUpMethod,
+  StatsFilter,
+  PrescriptionStatus,
 } from '@/types';
 import { mockMembers } from '@/data/members';
 import { mockPurchaseRecords } from '@/data/purchaseRecords';
@@ -46,24 +48,31 @@ interface MemberState {
   }) => boolean;
 
   getTodayStats: () => { total: number; completed: number; rate: number };
-  getPeriodStats: (period: 'today' | 'week' | 'month') => {
+  getPeriodStats: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => {
     total: number;
     completed: number;
     rate: number;
   };
-  getCategoryStats: (period: 'today' | 'week' | 'month') => {
+  getCategoryStats: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => {
     name: string;
     key: MemberCategory | 'all';
     count: number;
     completed: number;
     rate: number;
   }[];
-  getStaffRanking: (period: 'today' | 'week' | 'month') => {
+  getStaffRanking: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => {
     name: string;
     count: number;
     completed: number;
     rate: number;
   }[];
+
+  batchAssignStaff: (memberIds: string[], staffName: string) => void;
+  batchUpdateNextFollowDate: (memberIds: string[], date: string) => void;
+
+  statsFilter: StatsFilter;
+  setStatsFilter: (filter: Partial<StatsFilter>) => void;
+  getMembersByStatsFilter: (period: 'today' | 'week' | 'month', filter?: Partial<StatsFilter>) => Member[];
 }
 
 const calculateNextFollowDate = (
@@ -124,6 +133,30 @@ const isDateInRange = (dateStr: string, start: string, end: string): boolean => 
   return d >= start && d <= end;
 };
 
+const applyMemberFilter = (members: Member[], filter: Partial<StatsFilter>): Member[] => {
+  let result = [...members];
+
+  if (filter.staff && filter.staff !== 'all') {
+    result = result.filter((m) => m.assignedTo === filter.staff);
+  }
+
+  if (filter.category && filter.category !== 'all') {
+    result = result.filter((m) => m.category === filter.category);
+  }
+
+  if (filter.prescriptionStatus && filter.prescriptionStatus !== 'all') {
+    result = result.filter((m) => m.prescriptionStatus === filter.prescriptionStatus);
+  }
+
+  return result;
+};
+
+const defaultStatsFilter: StatsFilter = {
+  staff: 'all',
+  category: 'all',
+  prescriptionStatus: 'all',
+};
+
 export const useMemberStore = create<MemberState>()(
   persist(
     (set, get) => ({
@@ -134,6 +167,7 @@ export const useMemberStore = create<MemberState>()(
       currentCategory: 'all',
       currentMemberId: null,
       lastVisitDate: getTodayStr(),
+      statsFilter: defaultStatsFilter,
 
       setCurrentCategory: (category) => set({ currentCategory: category }),
       setCurrentMemberId: (id) => set({ currentMemberId: id }),
@@ -230,74 +264,95 @@ export const useMemberStore = create<MemberState>()(
       },
 
       getTodayStats: () => {
-        const { members } = get();
-        const today = getTodayStr();
-        const todayReminders = members.filter(
-          (m) => m.nextFollowDate <= today || m.followedToday
-        );
-        const total = todayReminders.length;
-        const completed = todayReminders.filter((m) => m.followedToday).length;
-        const rate = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-        return { total, completed, rate };
+        return get().getPeriodStats('today');
       },
 
-      getPeriodStats: (period) => {
+      batchAssignStaff: (memberIds, staffName) => {
+        set((prev) => ({
+          members: prev.members.map((m) =>
+            memberIds.includes(m.id) ? { ...m, assignedTo: staffName } : m
+          ),
+        }));
+      },
+
+      batchUpdateNextFollowDate: (memberIds, date) => {
+        set((prev) => ({
+          members: prev.members.map((m) =>
+            memberIds.includes(m.id) ? { ...m, nextFollowDate: date } : m
+          ),
+        }));
+      },
+
+      setStatsFilter: (filter) =>
+        set((prev) => ({
+          statsFilter: { ...prev.statsFilter, ...filter },
+        })),
+
+      getMembersByStatsFilter: (period, filter = {}) => {
         const state = get();
+        const { members, followUps } = state;
         const { start, end } = getDateRangeForPeriod(period);
         const today = getTodayStr();
+
+        let memberList: Member[];
 
         if (period === 'today') {
-          return state.getTodayStats();
-        }
-
-        const { members, followUps } = state;
-
-        const allFollowUpsFlat = Object.values(followUps).flat();
-        const periodFollowUps = allFollowUpsFlat.filter((f) =>
-          isDateInRange(f.followDate, start, end)
-        );
-
-        const uniqueMemberIds = new Set<string>();
-        periodFollowUps.forEach((f) => uniqueMemberIds.add(f.memberId));
-
-        const todayReminders = members.filter(
-          (m) => m.nextFollowDate <= today || m.followedToday
-        );
-
-        let total: number;
-        let completed: number;
-
-        if (period === 'week') {
-          const weekTargetBase = todayReminders.length;
-          total = Math.max(weekTargetBase, uniqueMemberIds.size);
-          const effectiveFollowedMembers = new Set(
-            periodFollowUps.filter((f) =>
-              f.result === 'connected' || f.result === 'purchased'
-            ).map((f) => f.memberId)
+          memberList = members.filter(
+            (m) => m.nextFollowDate <= today || m.followedToday
           );
-          completed = effectiveFollowedMembers.size;
         } else {
-          const monthTarget = todayReminders.length * 4;
-          total = Math.max(monthTarget, uniqueMemberIds.size);
-          const effectiveFollowedMembers = new Set(
-            periodFollowUps.filter((f) =>
-              f.result === 'connected' || f.result === 'purchased'
-            ).map((f) => f.memberId)
+          const periodMemberIds = new Set<string>();
+          const allFollowUpsFlat = Object.values(followUps).flat();
+          allFollowUpsFlat
+            .filter((f) => isDateInRange(f.followDate, start, end))
+            .forEach((f) => periodMemberIds.add(f.memberId));
+
+          const todayReminderIds = new Set(
+            members.filter((m) => m.nextFollowDate <= today || m.followedToday).map((m) => m.id)
           );
-          completed = Math.min(total, effectiveFollowedMembers.size);
+
+          const allIds = new Set([...periodMemberIds, ...todayReminderIds]);
+          memberList = members.filter((m) => allIds.has(m.id));
         }
 
-        total = Math.max(total, completed);
-        const rate = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-
-        return { total, completed, rate };
+        return applyMemberFilter(memberList, filter);
       },
 
-      getCategoryStats: (period) => {
+      getPeriodStats: (period, filter = {}) => {
         const state = get();
-        const { members, followUps } = state;
+        const { followUps } = state;
         const { start, end } = getDateRangeForPeriod(period);
-        const today = getTodayStr();
+
+        const targetMembers = state.getMembersByStatsFilter(period, filter);
+        const total = targetMembers.length;
+
+        const targetMemberIds = new Set(targetMembers.map((m) => m.id));
+        const allFollowUpsFlat = Object.values(followUps).flat();
+        const periodFollowUps = allFollowUpsFlat.filter(
+          (f) =>
+            isDateInRange(f.followDate, start, end) && targetMemberIds.has(f.memberId)
+        );
+
+        const completedMemberIds = new Set(
+          periodFollowUps
+            .filter((f) => f.result === 'connected' || f.result === 'purchased')
+            .map((f) => f.memberId)
+        );
+
+        const completed = completedMemberIds.size;
+        const safeTotal = Math.max(total, completed);
+        const rate =
+          safeTotal > 0
+            ? Math.min(100, Math.round((completed / safeTotal) * 100))
+            : 0;
+
+        return { total: safeTotal, completed, rate };
+      },
+
+      getCategoryStats: (period, filter = {}) => {
+        const state = get();
+        const { followUps } = state;
+        const { start, end } = getDateRangeForPeriod(period);
 
         const categories: (MemberCategory | 'all')[] = [
           'all',
@@ -321,107 +376,69 @@ export const useMemberStore = create<MemberState>()(
         );
 
         return categories.map((cat) => {
-          let count: number;
-          let completed: number;
+          const catFilter = { ...filter, category: cat === 'all' ? filter.category : cat };
+          const catMembers = state.getMembersByStatsFilter(period, catFilter);
+          const count = catMembers.length;
 
-          if (period === 'today') {
-            const filtered =
-              cat === 'all'
-                ? members.filter((m) => m.nextFollowDate <= today || m.followedToday)
-                : members.filter(
-                    (m) =>
-                      m.category === cat &&
-                      (m.nextFollowDate <= today || m.followedToday)
-                  );
-            count = filtered.length;
-            completed = filtered.filter((m) => m.followedToday).length;
-          } else {
-            const catFollowUps =
-              cat === 'all'
-                ? periodFollowUps
-                : periodFollowUps.filter((f) => {
-                    const m = members.find((mem) => mem.id === f.memberId);
-                    return m && m.category === cat;
-                  });
+          const catMemberIds = new Set(catMembers.map((m) => m.id));
+          const catFollowUps = periodFollowUps.filter((f) => catMemberIds.has(f.memberId));
+          const completedMemberIds = new Set(
+            catFollowUps
+              .filter((f) => f.result === 'connected' || f.result === 'purchased')
+              .map((f) => f.memberId)
+          );
+          const completed = completedMemberIds.size;
 
-            const uniqueMemberIds = new Set(catFollowUps.map((f) => f.memberId));
-            const baseCount =
-              cat === 'all'
-                ? members.filter((m) => m.nextFollowDate <= today || m.followedToday).length
-                : members.filter(
-                    (m) =>
-                      m.category === cat &&
-                      (m.nextFollowDate <= today || m.followedToday)
-                  ).length;
+          const safeCount = Math.max(count, completed);
+          const rate =
+            safeCount > 0
+              ? Math.min(100, Math.round((completed / safeCount) * 100))
+              : 0;
 
-            const multiplier = period === 'week' ? 1 : 4;
-            count = Math.max(baseCount * multiplier, uniqueMemberIds.size);
-            const effectiveMembers = new Set(
-              catFollowUps.filter((f) =>
-                f.result === 'connected' || f.result === 'purchased'
-              ).map((f) => f.memberId)
-            );
-            completed = Math.min(count, effectiveMembers.size);
-          }
-
-          count = Math.max(count, completed);
-          const rate = count > 0 ? Math.min(100, Math.round((completed / count) * 100)) : 0;
-
-          return { name: categoryNames[cat], key: cat, count, completed, rate };
+          return { name: categoryNames[cat], key: cat, count: safeCount, completed, rate };
         });
       },
 
-      getStaffRanking: (period) => {
+      getStaffRanking: (period, filter = {}) => {
         const state = get();
         const { followUps } = state;
         const { start, end } = getDateRangeForPeriod(period);
-        const today = getTodayStr();
 
-        const staffMap: Record<string, { count: number; completed: number }> = {};
+        const targetMembers = state.getMembersByStatsFilter(period, filter);
+        const targetMemberIds = new Set(targetMembers.map((m) => m.id));
+
+        const staffMap: Record<string, { memberSet: Set<string>; completedSet: Set<string> }> = {};
 
         const allStaff = ['张营业员', '李营业员', '王营业员'];
         allStaff.forEach((name) => {
-          staffMap[name] = { count: 0, completed: 0 };
+          staffMap[name] = { memberSet: new Set(), completedSet: new Set() };
         });
 
         const allFollowUpsFlat = Object.values(followUps).flat();
-        const periodFollowUps = allFollowUpsFlat.filter((f) =>
-          isDateInRange(f.followDate, start, end)
+        const periodFollowUps = allFollowUpsFlat.filter(
+          (f) =>
+            isDateInRange(f.followDate, start, end) && targetMemberIds.has(f.memberId)
         );
 
         periodFollowUps.forEach((f) => {
           if (staffMap[f.operator]) {
-            staffMap[f.operator].count++;
+            staffMap[f.operator].memberSet.add(f.memberId);
             if (f.result === 'connected' || f.result === 'purchased') {
-              staffMap[f.operator].completed++;
+              staffMap[f.operator].completedSet.add(f.memberId);
             }
           }
         });
 
-        if (period !== 'today') {
-          const periodStart = new Date(start);
-          const lastSeed =
-            periodStart.getFullYear() * 10000 +
-            (periodStart.getMonth() + 1) * 100 +
-            periodStart.getDate();
-
-          allStaff.forEach((name, idx) => {
-            const seed = lastSeed + idx * 31 + (period === 'week' ? 7 : 30);
-            const deterministicExtra = Math.floor(
-              (Math.sin(seed) * 10000) % (period === 'week' ? 8 : 35)
-            );
-            const extra = Math.max(0, deterministicExtra);
-            staffMap[name].count += extra;
-            const effectiveExtra = Math.floor(extra * (0.6 + idx * 0.05));
-            staffMap[name].completed += Math.min(extra, effectiveExtra);
-          });
-        }
-
         return allStaff
           .map((name) => {
-            const { count, completed } = staffMap[name];
+            const { memberSet, completedSet } = staffMap[name];
+            const count = memberSet.size;
+            const completed = completedSet.size;
             const safeCompleted = Math.min(completed, count);
-            const rate = count > 0 ? Math.min(100, Math.round((safeCompleted / count) * 100)) : 0;
+            const rate =
+              count > 0
+                ? Math.min(100, Math.round((safeCompleted / count) * 100))
+                : 0;
             return {
               name,
               count,
@@ -429,7 +446,7 @@ export const useMemberStore = create<MemberState>()(
               rate,
             };
           })
-          .sort((a, b) => b.count - a.count);
+          .sort((a, b) => b.count - a.count || b.completed - a.completed);
       },
     }),
     {
@@ -438,6 +455,7 @@ export const useMemberStore = create<MemberState>()(
         members: state.members,
         followUps: state.followUps,
         lastVisitDate: state.lastVisitDate,
+        statsFilter: state.statsFilter,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;

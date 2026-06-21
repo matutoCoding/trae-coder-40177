@@ -1,4 +1,4 @@
-import { Phone, MessageSquare, ChevronRight, User } from 'lucide-react';
+import { Phone, MessageSquare, ChevronRight, User, Check } from 'lucide-react';
 import type { Member } from '@/types';
 import { CATEGORY_MAP, MEMBER_LEVEL_MAP, getRemainingDaysInfo } from '@/utils/constants';
 import { formatDateCN } from '@/utils/dateUtils';
@@ -9,9 +9,18 @@ import { useNavigate } from 'react-router-dom';
 interface MemberCardProps {
   member: Member;
   onQuickFollow?: (member: Member) => void;
+  selected?: boolean;
+  onSelect?: (memberId: string) => void;
+  showCheckbox?: boolean;
 }
 
-export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
+export default function MemberCard({
+  member,
+  onQuickFollow,
+  selected = false,
+  onSelect,
+  showCheckbox = false,
+}: MemberCardProps) {
   const navigate = useNavigate();
   const categoryInfo = CATEGORY_MAP[member.category];
   const levelInfo = MEMBER_LEVEL_MAP[member.memberLevel];
@@ -19,6 +28,11 @@ export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
 
   const handleClick = () => {
     navigate(`/member/${member.id}`);
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect?.(member.id);
   };
 
   const handleQuickCall = (e: React.MouseEvent) => {
@@ -39,11 +53,26 @@ export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
     <div
       onClick={handleClick}
       className={cn(
-        'group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg',
-        member.followedToday && 'opacity-70'
+        'group cursor-pointer rounded-xl border bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg',
+        member.followedToday && 'opacity-70',
+        selected && 'border-blue-500 bg-blue-50/50 shadow-md'
       )}
     >
       <div className="flex items-start gap-4">
+        {showCheckbox && (
+          <div
+            onClick={handleCheckboxClick}
+            className={cn(
+              'mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all',
+              selected
+                ? 'border-blue-500 bg-blue-500'
+                : 'border-slate-300 bg-white hover:border-blue-400'
+            )}
+          >
+            {selected && <Check className="h-3.5 w-3.5 text-white" />}
+          </div>
+        )}
+
         <div className="relative">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white">
             <User className="h-6 w-6" />
@@ -75,9 +104,14 @@ export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
             <span className={cn('text-xs font-medium', levelInfo.color)}>
               {levelInfo.label}
             </span>
+            {member.assignedTo && (
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                {member.assignedTo}
+              </span>
+            )}
           </div>
 
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
             <span
               className={cn(
                 'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium',

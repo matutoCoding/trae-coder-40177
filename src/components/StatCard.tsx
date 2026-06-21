@@ -10,6 +10,7 @@ interface StatCardProps {
   icon?: React.ReactNode;
   color?: 'blue' | 'green' | 'amber' | 'rose';
   className?: string;
+  clickable?: boolean;
 }
 
 const colorMap = {
@@ -28,15 +29,17 @@ export default function StatCard({
   icon,
   color = 'blue',
   className,
+  clickable = false,
 }: StatCardProps) {
   return (
     <div
       className={cn(
-      'relative overflow-hidden rounded-xl bg-white p-5 shadow-sm transition-all hover:shadow-md',
-      className
-    )}
-    style={{ transition: 'all 0.3s ease' }}
-  >
+        'relative overflow-hidden rounded-xl bg-white p-5 shadow-sm transition-all',
+        clickable && 'cursor-pointer hover:shadow-md hover:-translate-y-0.5',
+        className
+      )}
+      style={{ transition: 'all 0.3s ease' }}
+    >
     <div className="flex items-start justify-between">
       <div className="flex-1">
         <p className="text-sm font-medium text-slate-500">{title}</p>
