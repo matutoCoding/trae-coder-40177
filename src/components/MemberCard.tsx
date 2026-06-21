@@ -23,12 +23,16 @@ export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
 
   const handleQuickCall = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onQuickFollow?.(member);
+    if (!member.followedToday) {
+      onQuickFollow?.(member);
+    }
   };
 
   const handleQuickSms = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onQuickFollow?.(member);
+    if (!member.followedToday) {
+      onQuickFollow?.(member);
+    }
   };
 
   return (
@@ -117,22 +121,41 @@ export default function MemberCard({ member, onQuickFollow }: MemberCardProps) {
 
         <div className="flex flex-col items-end gap-2">
           <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-blue-500" />
-          <div className="flex gap-2">
-            <button
-              onClick={handleQuickCall}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
-              title="拨打电话"
-            >
-              <Phone className="h-4 w-4" />
-            </button>
-            <button
-              onClick={handleQuickSms}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100"
-              title="发送短信"
-            >
-              <MessageSquare className="h-4 w-4" />
-            </button>
-          </div>
+          {member.followedToday ? (
+            <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-600">
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              今日已跟进
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={handleQuickCall}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
+                title="拨打电话"
+              >
+                <Phone className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleQuickSms}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100"
+                title="发送短信"
+              >
+                <MessageSquare className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

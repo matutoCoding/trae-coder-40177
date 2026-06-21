@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   BarChart3,
   Calendar,
   TrendingUp,
-  TrendingDown,
   Medal,
   Users,
   CheckCircle2,
@@ -21,34 +20,13 @@ type PeriodType = 'today' | 'week' | 'month';
 
 export default function Statistics() {
   const [period, setPeriod] = useState<PeriodType>('today');
-  const { members, getTodayStats, getCategoryStats, getStaffRanking } = useMemberStore();
+  const { getPeriodStats, getCategoryStats, getStaffRanking } = useMemberStore();
 
-  const todayStats = getTodayStats();
-  const categoryStats = getCategoryStats();
-  const staffRanking = getStaffRanking();
+  const currentStats = getPeriodStats(period);
+  const categoryStats = getCategoryStats(period);
+  const staffRanking = getStaffRanking(period);
 
-  const weekStats = useMemo(() => {
-    const total = members.length;
-    const completed = members.filter((m) => m.followedToday).length + 15;
-    return {
-      total: total,
-      completed,
-      rate: Math.round((completed / total) * 100),
-    };
-  }, [members]);
-
-  const monthStats = useMemo(() => {
-    const total = members.length * 3;
-    const completed = Math.round(total * 0.72);
-    return {
-      total,
-      completed,
-      rate: Math.round((completed / total) * 100),
-    };
-  }, [members]);
-
-  const currentStats =
-    period === 'today' ? todayStats : period === 'week' ? weekStats : monthStats;
+  const pendingCount = Math.max(0, currentStats.total - currentStats.completed);
 
   const periodLabels = {
     today: '今日',
@@ -70,7 +48,7 @@ export default function Statistics() {
             <h1 className="text-2xl font-bold text-slate-900">数据统计</h1>
             <p className="mt-1 text-sm text-slate-500">
               <Calendar className="mr-1 inline h-4 w-4" />
-              {formatDateCN(new Date().toISOString())} · 跟进完成情况
+              {formatDateCN(new Date().toISOString())} · {periodLabels[period]}跟进完成情况
             </p>
           </div>
 
@@ -94,38 +72,32 @@ export default function Statistics() {
 
         <div className="mb-6 grid grid-cols-4 gap-4">
           <StatCard
-            title="待跟进总数"
-            value={currentStats.total}
-            subtitle={`${periodLabels[period]}待跟进会员`}
+            title={`${periodLabels[period]}待跟进`}
+            value={pendingCount}
+            subtitle={`${periodLabels[period]}剩余待跟进会员`}
             icon={<Users className="h-6 w-6" />}
+            color="amber"
+          />
+          <StatCard
+            title={`${periodLabels[period]}已完成`}
+            value={currentStats.completed}
+            subtitle={`${periodLabels[period]}已有效跟进`}
+            icon={<CheckCircle2 className="h-6 w-6" />}
+            color="green"
+          />
+          <StatCard
+            title={`${periodLabels[period]}总数`}
+            value={currentStats.total}
+            subtitle={`${periodLabels[period]}目标跟进数`}
+            icon={<Clock className="h-6 w-6" />}
             color="blue"
           />
           <StatCard
-            title="已完成"
-            value={currentStats.completed}
-            subtitle={`${periodLabels[period]}已跟进`}
-            icon={<CheckCircle2 className="h-6 w-6" />}
-            color="green"
-            trend="up"
-            trendValue="较上周期 +12%"
-          />
-          <StatCard
-            title="未完成"
-            value={currentStats.total - currentStats.completed}
-            subtitle={`${periodLabels[period]}待跟进`}
-            icon={<Clock className="h-6 w-6" />}
-            color="amber"
-            trend="down"
-            trendValue="较上周期 -8%"
-          />
-          <StatCard
-            title="完成率"
+            title={`${periodLabels[period]}完成率`}
             value={`${currentStats.rate}%`}
             subtitle={`${periodLabels[period]}整体完成率`}
             icon={<TrendingUp className="h-6 w-6" />}
             color="blue"
-            trend="up"
-            trendValue="较上周期 +5%"
           />
         </div>
 
@@ -186,7 +158,7 @@ export default function Statistics() {
                 <div className="flex-1 text-center">
                   <p className="text-slate-400">剩余</p>
                   <p className="mt-1 font-semibold text-amber-600">
-                    {currentStats.total - currentStats.completed}人
+                    {pendingCount}人
                   </p>
                 </div>
               </div>
@@ -204,6 +176,7 @@ export default function Statistics() {
                 .map((cat) => {
                   const categoryInfo = CATEGORY_MAP[cat.key as MemberCategory];
                   const barWidth = `${cat.rate}%`;
+                  const catPending = Math.max(0, cat.count - cat.completed);
 
                   return (
                     <div key={cat.key}>
@@ -222,6 +195,9 @@ export default function Statistics() {
                         <div className="text-right">
                           <span className="text-sm font-semibold text-slate-700">
                             {cat.completed}/{cat.count}
+                          </span>
+                          <span className="ml-2 text-xs text-slate-400">
+                            剩{catPending}
                           </span>
                           <span className="ml-2 text-xs text-slate-400">
                             {cat.rate}%
@@ -248,11 +224,13 @@ export default function Statistics() {
 
             <div className="mt-6 rounded-xl bg-slate-50 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">整体转化率</span>
-                <span className="text-lg font-bold text-emerald-600">68.5%</span>
+                <span className="text-sm text-slate-500">{periodLabels[period]}到店转化率</span>
+                <span className="text-lg font-bold text-emerald-600">
+                  {categoryStats.find((c) => c.key === 'all')?.rate ?? 0}%
+                </span>
               </div>
               <p className="mt-1 text-xs text-slate-400">
-                已接通会员中，实际到店购买的比例
+                已接通会员中实际到店购买的比例
               </p>
             </div>
           </div>
@@ -291,7 +269,9 @@ export default function Statistics() {
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
                       <span>跟进 {staff.count} 人</span>
                       <span>·</span>
-                      <span>完成 {staff.completed} 人</span>
+                      <span>有效 {staff.completed} 人</span>
+                      <span>·</span>
+                      <span>剩{Math.max(0, staff.count - staff.completed)}人</span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -306,7 +286,14 @@ export default function Statistics() {
 
             <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-3 text-center">
               <p className="text-sm text-slate-500">
-                今日人均跟进 <span className="font-semibold text-blue-600">8.5</span> 人
+                {periodLabels[period]}人均跟进{' '}
+                <span className="font-semibold text-blue-600">
+                  {Math.round(
+                    staffRanking.reduce((sum, s) => sum + s.count, 0) /
+                      Math.max(1, staffRanking.length)
+                  )}
+                </span>{' '}
+                人
               </p>
             </div>
           </div>
@@ -320,10 +307,13 @@ export default function Statistics() {
           <div className="flex h-48 items-end gap-2 px-2">
             {['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((day, index) => {
               const heights = [65, 72, 58, 80, 75, 45, 30];
+              const values = [26, 29, 23, 32, 30, 18, 12];
               const height = heights[index];
+              const value = values[index];
 
               return (
                 <div key={day} className="flex flex-1 flex-col items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600">{value}</span>
                   <div className="flex w-full flex-1 items-end">
                     <div
                       className="w-full rounded-t-lg bg-gradient-to-t from-blue-500 to-blue-400 transition-all duration-500 hover:from-blue-600 hover:to-blue-500"

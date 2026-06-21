@@ -51,14 +51,16 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
   const [selectedMethod, setSelectedMethod] = useState<FollowUpMethod>('phone');
   const [notes, setNotes] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
-  const addFollowUp = useMemberStore((state) => state.addFollowUp);
+  const { addFollowUp, hasFollowedToday } = useMemberStore();
 
   if (!isOpen || !member) return null;
 
-  const handleSubmit = () => {
-    if (!selectedResult) return;
+  const alreadyFollowed = hasFollowedToday(member.id);
 
-    addFollowUp({
+  const handleSubmit = () => {
+    if (!selectedResult || alreadyFollowed) return;
+
+    const success = addFollowUp({
       memberId: member.id,
       method: selectedMethod,
       result: selectedResult,
@@ -66,13 +68,15 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
       operator: '张营业员',
     });
 
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
-      setSelectedResult(null);
-      setNotes('');
-      onClose();
-    }, 1500);
+    if (success) {
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        setSelectedResult(null);
+        setNotes('');
+        onClose();
+      }, 1500);
+    }
   };
 
   const handleClose = () => {
@@ -112,13 +116,26 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
         </div>
 
         <div className="p-5">
-          <div className="mb-5">
+          {alreadyFollowed && (
+            <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <Check className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-emerald-700">今日已完成跟进</p>
+                <p className="text-xs text-emerald-600/80">同一会员一天内只需跟进一次，明天会自动重新安排</p>
+              </div>
+            </div>
+          )}
+
+          <div className={cn('mb-5', alreadyFollowed && 'pointer-events-none opacity-50')}>
             <p className="mb-2 text-sm font-medium text-slate-700">跟进方式</p>
             <div className="flex gap-2">
               {(['phone', 'sms', 'visit'] as FollowUpMethod[]).map((method) => (
                 <button
                   key={method}
                   onClick={() => setSelectedMethod(method)}
+                  disabled={alreadyFollowed}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all',
                     selectedMethod === method
@@ -135,12 +152,12 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
             </div>
           </div>
 
-          <div className="mb-5">
+          <div className={cn('mb-5', alreadyFollowed && 'pointer-events-none opacity-50')}>
             <p className="mb-2 text-sm font-medium text-slate-700">话术模板</p>
             <ScriptPanel category={member.category} type={selectedMethod} compact />
           </div>
 
-          <div className="mb-5">
+          <div className={cn('mb-5', alreadyFollowed && 'pointer-events-none opacity-50')}>
             <p className="mb-2 text-sm font-medium text-slate-700">跟进结果</p>
             <div className="grid grid-cols-2 gap-2">
               {results.map((result) => {
@@ -152,6 +169,7 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
                   <button
                     key={result.key}
                     onClick={() => setSelectedResult(result.key)}
+                    disabled={alreadyFollowed}
                     className={cn(
                       'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
                       isSelected
@@ -184,13 +202,14 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
             </div>
           </div>
 
-          <div className="mb-5">
+          <div className={cn('mb-5', alreadyFollowed && 'pointer-events-none opacity-50')}>
             <p className="mb-2 text-sm font-medium text-slate-700">跟进备注</p>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              disabled={alreadyFollowed}
               placeholder="请输入跟进备注..."
-              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
               rows={3}
             />
           </div>
@@ -201,20 +220,22 @@ export default function FollowUpModal({ member, isOpen, onClose }: FollowUpModal
             onClick={handleClose}
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
-            取消
+            {alreadyFollowed ? '关闭' : '取消'}
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedResult}
-            className={cn(
-              'rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors',
-              selectedResult
-                ? 'bg-blue-600 hover:bg-blue-700'
-                : 'cursor-not-allowed bg-slate-300'
-            )}
-          >
-            保存记录
-          </button>
+          {!alreadyFollowed && (
+            <button
+              onClick={handleSubmit}
+              disabled={!selectedResult}
+              className={cn(
+                'rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors',
+                selectedResult
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'cursor-not-allowed bg-slate-300'
+              )}
+            >
+              保存记录
+            </button>
+          )}
         </div>
       </div>
     </div>

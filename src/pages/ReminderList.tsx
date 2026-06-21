@@ -13,16 +13,14 @@ export default function ReminderList() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { members, getTodayStats, getFilteredMembers } = useMemberStore();
+  const { members, getTodayStats, hasFollowedToday } = useMemberStore();
 
   const todayStats = getTodayStats();
 
   const filteredMembers = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
     let list = members.filter(
-      (m) => {
-        const today = new Date().toISOString().split('T')[0];
-        return m.nextFollowDate <= today || m.followedToday;
-      }
+      (m) => m.nextFollowDate <= today || m.followedToday
     );
 
     if (activeCategory !== 'all') {
@@ -39,11 +37,9 @@ export default function ReminderList() {
   }, [members, activeCategory]);
 
   const categoryCounts = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
     const todayReminders = members.filter(
-      (m) => {
-        const today = new Date().toISOString().split('T')[0];
-        return m.nextFollowDate <= today || m.followedToday;
-      }
+      (m) => m.nextFollowDate <= today || m.followedToday
     );
     return {
       all: todayReminders.length,
@@ -55,6 +51,9 @@ export default function ReminderList() {
   }, [members]);
 
   const handleQuickFollow = (member: Member) => {
+    if (hasFollowedToday(member.id)) {
+      return;
+    }
     setSelectedMember(member);
     setIsModalOpen(true);
   };
@@ -84,8 +83,6 @@ export default function ReminderList() {
             subtitle="今日待跟进会员"
             icon={<Bell className="h-6 w-6" />}
             color="amber"
-            trend="down"
-            trendValue="较昨日减少 2 位"
           />
           <StatCard
             title="已完成"
@@ -93,8 +90,6 @@ export default function ReminderList() {
             subtitle="今日已跟进会员"
             icon={<CheckCircle2 className="h-6 w-6" />}
             color="green"
-            trend="up"
-            trendValue="较昨日增加 3 位"
           />
           <StatCard
             title="完成率"
@@ -102,8 +97,6 @@ export default function ReminderList() {
             subtitle="今日跟进完成率"
             icon={<TrendingUp className="h-6 w-6" />}
             color="blue"
-            trend="up"
-            trendValue="较昨日提升 5%"
           />
         </div>
 

@@ -39,12 +39,14 @@ export default function MemberDetail() {
     getPurchaseRecords,
     getPrescriptions,
     getFollowUps,
+    hasFollowedToday,
   } = useMemberStore();
 
   const member = getMemberById(id || '');
   const purchaseRecords = getPurchaseRecords(id || '');
   const prescriptions = getPrescriptions(id || '');
   const followUps = getFollowUps(id || '');
+  const followedToday = member ? hasFollowedToday(member.id) : false;
 
   if (!member) {
     return (
@@ -64,7 +66,9 @@ export default function MemberDetail() {
   };
 
   const handleFollow = () => {
-    setIsModalOpen(true);
+    if (!followedToday) {
+      setIsModalOpen(true);
+    }
   };
 
   const prescriptionDaysLeft = latestPrescription
@@ -142,20 +146,41 @@ export default function MemberDetail() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={handleFollow}
-                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  <Phone className="h-4 w-4" />
-                  电话跟进
-                </button>
-                <button
-                  onClick={handleFollow}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  短信提醒
-                </button>
+                {followedToday ? (
+                  <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-600">
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    今日已完成跟进
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleFollow}
+                      className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                    >
+                      <Phone className="h-4 w-4" />
+                      电话跟进
+                    </button>
+                    <button
+                      onClick={handleFollow}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      短信提醒
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -413,14 +438,33 @@ export default function MemberDetail() {
               <ScriptPanel category={member.category} type="phone" />
             </div>
 
-            <button
-              onClick={handleFollow}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 py-4 font-medium text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300"
-            >
-              <Phone className="h-5 w-5" />
-              开始跟进
-              <ChevronRight className="h-5 w-5" />
-            </button>
+            {followedToday ? (
+              <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-4 font-medium text-white shadow-lg shadow-emerald-200">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                今日跟进已完成
+              </div>
+            ) : (
+              <button
+                onClick={handleFollow}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 py-4 font-medium text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300"
+              >
+                <Phone className="h-5 w-5" />
+                开始跟进
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
